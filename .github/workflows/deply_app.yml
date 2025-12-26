@@ -5,7 +5,7 @@ on:
     branches: ["main"]
     paths:
       - "deployment/**"
-      - ".github/workflows/deploy.yml"
+      - ".github/workflows/deply_app.yml"
 
 permissions:
   contents: read
@@ -60,4 +60,4 @@ jobs:
 
       - name: Apply Kubernetes manifests
         run: |
-          kubectl apply -n "${NAMESPACE}" -f k8s/
+          kubectl apply -n "${NAMESPACE}" -f deployment//
