@@ -19,7 +19,6 @@ resource "google_container_cluster" "this" {
     disk_size_gb = var.cluster_boot_disk_size_gb
     disk_type    = var.cluster_boot_disk_type
     oauth_scopes = var.node_oauth_scopes
-    labels       = var.node_labels
   }
 
   deletion_protection = var.deletion_protection
