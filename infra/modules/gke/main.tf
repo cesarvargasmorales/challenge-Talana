@@ -11,12 +11,10 @@ resource "google_container_cluster" "this" {
     services_secondary_range_name = var.services_secondary_range
   }
 
-  # Clave para manejar node pools aparte
   remove_default_node_pool = true
   initial_node_count       = 1
 
-  # Workaround: define node_config para el pool temporal que
-  # GKE considera durante la creación del cluster (cuotas SSD_TOTAL_GB)
+  # Importante: definir explícitamente para evitar requests vacíos y controlar cuota de disco.
   node_config {
     disk_size_gb = var.cluster_boot_disk_size_gb
     disk_type    = var.cluster_boot_disk_type
@@ -32,13 +30,8 @@ resource "google_container_cluster" "this" {
       workload_pool = coalesce(var.workload_pool, "${var.project_id}.svc.id.goog")
     }
   }
-
-  addons_config {
-    http_load_balancing {
-      disabled = false
-    }
-  }
 }
+
 
 resource "google_container_node_pool" "this" {
   for_each = var.node_pools
