@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: django-app-ksa
+  namespace: app-talana
+  annotations:
+    iam.gke.io/gcp-service-account: django-app-gsa@marine-guard-482400-k3.iam.gserviceaccount.com
