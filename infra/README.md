@@ -30,12 +30,23 @@ La aplicación Django se despliega posteriormente sobre GKE, separando clarament
 ------------------------------------------------------------------------
 ## 2. Diagrama de Arquitectura
 ```mermaid
-graph TD;
-    A[Inicio] --> B{Decisión};
-    B -->|Sí| C[Proceso 1];
-    B -->|No| D[Proceso 2];
-    C --> E[Fin];
-    D --> E[Fin];
+graph TD
+    Internet[Internet] --> Gateway[Gateway API<br/>GCLB L7]
+
+    Gateway --> Service[Kubernetes Service<br/>ClusterIP]
+
+    subgraph GCP["Google Cloud Platform"]
+        subgraph VPC["VPC Personalizada"]
+            subgraph GKE["GKE Standard Cluster"]
+                Service --> Pod[Django Pod]
+                Pod --> Proxy[Cloud SQL Auth Proxy]
+            end
+
+            Proxy -->|Private IP| CloudSQL[Cloud SQL<br/>PostgreSQL]
+        end
+    end
+
+    Secrets[Secret Manager] -->|Password DB| Pod
 ```
 ------------------------------------------------------------------------
 ## 3. Infraestructura (IaC con Terraform)
