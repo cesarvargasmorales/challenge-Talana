@@ -17,7 +17,7 @@ spec:
 
       containers:
         - name: app
-          image: us-east1-docker.pkg.dev/marine-guard-482400-k3/challenge-talana/django-app:latest
+          image: us-east1-docker.pkg.dev/marine-guard-482400-k3/apps/django-app:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000

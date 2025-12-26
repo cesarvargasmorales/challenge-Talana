@@ -31,7 +31,6 @@ resource "google_container_cluster" "this" {
   }
 }
 
-
 resource "google_container_node_pool" "this" {
   for_each = var.node_pools
 
