@@ -1,0 +1,59 @@
+name: deploy
+
+on:
+    workflow_dispatch:
+        inputs:
+            image_tag:
+                description: "Tag de imagen (ej: git sha)"
+                required: true
+            promote_to:
+                description: "Color a promover (blue|green)"
+                required: true
+
+permissions:
+    contents: read
+    id-token: write
+
+jobs:
+    build-and-push:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: google-github-actions/auth@v2
+              with:
+                  workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+                  service_account: ${{ secrets.GCP_CICD_SA_EMAIL }}
+
+            - uses: google-github-actions/setup-gcloud@v2
+
+            - name: Configure docker auth
+              run: gcloud auth configure-docker ${{ secrets.GAR_REGION }}-docker.pkg.dev --quiet
+
+            - name: Build & push
+              run: |
+                  IMAGE="${{ secrets.GAR_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GAR_REPO }}/${{ secrets.APP_NAME }}:${{ inputs.image_tag }}"
+                  docker build -t "$IMAGE" .
+                  docker push "$IMAGE"
+
+    promote:
+        needs: [build-and-push]
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: google-github-actions/auth@v2
+              with:
+                  workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+                  service_account: ${{ secrets.GCP_TF_SA_EMAIL }}
+
+            - uses: hashicorp/setup-terraform@v3
+
+            - name: Terraform init
+              run: terraform -chdir=envs/dev init
+
+            - name: Promote (switch traffic_color)
+              run: |
+                  terraform -chdir=envs/dev apply -auto-approve \
+                    -var="image_tag=${{ inputs.image_tag }}" \
+                    -var="traffic_color=${{ inputs.promote_to }}"
