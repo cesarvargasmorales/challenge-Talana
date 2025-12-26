@@ -1,59 +1,58 @@
-name: deploy
+name: Deploy to GKE
 
 on:
-    workflow_dispatch:
-        inputs:
-            image_tag:
-                description: "Tag de imagen (ej: git sha)"
-                required: true
-            promote_to:
-                description: "Color a promover (blue|green)"
-                required: true
+  push:
+    branches: ["main"]
+    paths:
+      - "k8s/**"
+      - ".github/workflows/deploy.yml"
 
 permissions:
-    contents: read
-    id-token: write
+  contents: read
+  id-token: write
+
+env:
+  NAMESPACE: app-talana
+  K8S_SECRET_NAME: db-password
+  SM_SECRET_ID: challenge-pg-password
 
 jobs:
-    build-and-push:
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v4
+  deploy:
+    runs-on: ubuntu-latest
 
-            - uses: google-github-actions/auth@v2
-              with:
-                  workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
-                  service_account: ${{ secrets.GCP_CICD_SA_EMAIL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-            - uses: google-github-actions/setup-gcloud@v2
+      - name: Authenticate to Google Cloud (OIDC)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SA }}
 
-            - name: Configure docker auth
-              run: gcloud auth configure-docker ${{ secrets.GAR_REGION }}-docker.pkg.dev --quiet
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
 
-            - name: Build & push
-              run: |
-                  IMAGE="${{ secrets.GAR_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GAR_REPO }}/${{ secrets.APP_NAME }}:${{ inputs.image_tag }}"
-                  docker build -t "$IMAGE" .
-                  docker push "$IMAGE"
+      - name: Get GKE credentials
+        run: |
+          gcloud container clusters get-credentials "${{ vars.GKE_CLUSTER_NAME }}" \
+            --region "${{ vars.GKE_REGION }}" \
+            --project "${{ vars.GCP_PROJECT_ID }}"
 
-    promote:
-        needs: [build-and-push]
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v4
+      - name: Create namespace (idempotent)
+        run: |
+          kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
 
-            - uses: google-github-actions/auth@v2
-              with:
-                  workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
-                  service_account: ${{ secrets.GCP_TF_SA_EMAIL }}
+      - name: Sync DB password from Secret Manager -> Kubernetes Secret (idempotent)
+        run: |
+          gcloud secrets versions access latest \
+            --secret="${SM_SECRET_ID}" \
+            --project="${{ vars.GCP_PROJECT_ID }}" \
+          | kubectl -n "${NAMESPACE}" create secret generic "${K8S_SECRET_NAME}" \
+              --from-file=db_password=/dev/stdin \
+              --dry-run=client -o yaml \
+          | kubectl apply -f -
 
-            - uses: hashicorp/setup-terraform@v3
-
-            - name: Terraform init
-              run: terraform -chdir=envs/dev init
-
-            - name: Promote (switch traffic_color)
-              run: |
-                  terraform -chdir=envs/dev apply -auto-approve \
-                    -var="image_tag=${{ inputs.image_tag }}" \
-                    -var="traffic_color=${{ inputs.promote_to }}"
+      - name: Apply Kubernetes manifests
+        run: |
+          kubectl apply -n "${NAMESPACE}" -f k8s/
